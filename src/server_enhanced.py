@@ -7,8 +7,12 @@ This version supports:
 
 To use Azure CLI authentication:
 1. Install Azure CLI: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli
-2. Login: az login
-3. Set USE_AZURE_CLI=true in your .env file
+2. Login: az login --tenant <your-tenant-id>
+3. Set USE_AZURE_CLI=true in your .env file or MCP configuration
+
+For tenant-level accounts (no Azure subscription):
+- Set ALLOW_TENANT_LEVEL_ACCOUNT=true to suppress subscription warnings
+- Power BI only requires Azure AD tenant access, not Azure subscriptions
 """
 
 import argparse
@@ -323,21 +327,39 @@ class AzureAuthenticator:
 
     def authenticate(
         self,
-        tenant_id: str,
+        tenant_id: str = None,
         client_id: str = None,
         client_secret: str = None,
         scope: str = POWER_BI_SCOPE,
     ) -> str:
         """
         Authenticate using available methods in order of preference:
-        1. Azure CLI (if USE_AZURE_CLI=true and azure-identity available)
-        2. Service Principal (if client_id and client_secret provided)
-        3. Default Azure Credential (includes managed identity, etc.)
+        1. Windows Authentication (if tenant_id is None - for on-premises SSAS)
+        2. Azure CLI (if USE_AZURE_CLI=true and azure-identity available)
+        3. Service Principal (if client_id and client_secret provided)
+        4. Default Azure Credential (includes managed identity, etc.)
 
-        Returns: Access token for Power BI
+        Supports tenant-level accounts (no Azure subscription required):
+        - Set ALLOW_TENANT_LEVEL_ACCOUNT=true to suppress warnings
+        - Power BI only needs Azure AD tenant access, not subscriptions
+
+        Returns: Access token for Power BI, or special markers:
+        - "windows_auth" for Windows authentication (Integrated Security)
+        - "connection_string" for Service Principal via connection string
         """
+        # Check for Windows Authentication (on-premises SSAS)
+        if tenant_id is None or tenant_id == "":
+            self.auth_method = "Windows Authentication"
+            logger.info("Using Windows Authentication (Integrated Security)")
+            return "windows_auth"  # Special marker for Windows auth
+        
         scope = scope or POWER_BI_SCOPE
         resource = scope[:-9] if scope.endswith("/.default") else scope
+        
+        # Check if tenant-level accounts are explicitly allowed
+        allow_tenant_level = os.getenv("ALLOW_TENANT_LEVEL_ACCOUNT", "false").lower() == "true"
+        if allow_tenant_level:
+            logger.info("Tenant-level accounts allowed (no Azure subscription required)")
 
         if not AZURE_AUTH_AVAILABLE:
             if client_id and client_secret:
@@ -514,12 +536,17 @@ class PowerBIConnector:
     def connect(
         self,
         xmla_endpoint: str,
-        tenant_id: str,
+        tenant_id: str = None,
         client_id: str = None,
         client_secret: str = None,
         initial_catalog: str = None,
     ) -> bool:
-        """Establish connection to Power BI dataset using available authentication methods"""
+        """Establish connection to Power BI dataset using available authentication methods
+        
+        Supports:
+        - Windows Authentication: tenant_id=None (for on-premises SSAS)
+        - Azure AD Authentication: tenant_id required (for Power BI/Azure AS)
+        """
         self._check_pyadomd()
 
         try:
@@ -531,7 +558,23 @@ class PowerBIConnector:
 
             auth_result = self.authenticator.authenticate(tenant_id, client_id, client_secret)
 
-            if auth_result == "connection_string":
+            if auth_result == "windows_auth":
+                # Windows Authentication for on-premises SSAS
+                self._access_token = None
+                self._base_conn_str = None
+                self.connection_string = (
+                    f"Provider=MSOLAP;"
+                    f"Data Source={xmla_endpoint};"
+                    f"Initial Catalog={initial_catalog};"
+                    "Integrated Security=SSPI;"
+                    "Connect Timeout=15;"
+                )
+                # Test using Pyadomd connection string
+                logger.info(f"Testing Windows Auth connection with: {self.connection_string}")
+                with Pyadomd(self.connection_string):
+                    pass
+                logger.info("✓ Windows Authentication connection test successful")
+            elif auth_result == "connection_string":
                 # Service Principal via connection string
                 self._access_token = None
                 self._base_conn_str = None
@@ -1132,32 +1175,32 @@ async def handle_list_tools() -> List[Tool]:
     tools = [
         Tool(
             name="pbi_connect",
-            description="Connect to Power BI dataset using various authentication methods",
+            description="Connect to Power BI dataset or on-premises SSAS using various authentication methods",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "xmla_endpoint": {
                         "type": "string",
-                        "description": "XMLA endpoint URL for the Power BI workspace (e.g., powerbi://api.powerbi.com/v1.0/myorg/WorkspaceName)",
+                        "description": "XMLA endpoint URL. For Power BI: 'powerbi://api.powerbi.com/v1.0/myorg/WorkspaceName'. For on-premises SSAS: server name or 'http://server/olap/msmdpump.dll'",
                     },
                     "initial_catalog": {
                         "type": "string",
-                        "description": "Name of the Power BI dataset/semantic model to connect to",
+                        "description": "Name of the Power BI dataset/semantic model or SSAS database to connect to",
                     },
                     "tenant_id": {
                         "type": "string",
-                        "description": "Azure AD tenant ID (required for all auth methods)",
+                        "description": "Azure AD tenant ID (required for Power BI/Azure AS, omit or set to empty string for Windows Authentication with on-premises SSAS)",
                     },
                     "client_id": {
                         "type": "string",
-                        "description": "Service Principal client ID (optional if using Azure CLI auth)",
+                        "description": "Service Principal client ID (optional if using Azure CLI auth or Windows Authentication)",
                     },
                     "client_secret": {
                         "type": "string",
-                        "description": "Service Principal client secret (optional if using Azure CLI auth)",
+                        "description": "Service Principal client secret (optional if using Azure CLI auth or Windows Authentication)",
                     },
                 },
-                "required": ["xmla_endpoint", "initial_catalog", "tenant_id"],
+                "required": ["xmla_endpoint", "initial_catalog"],
             },
         ),
         Tool(
@@ -1382,9 +1425,7 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[TextCon
             return [TextContent(type="text", text=output)]
 
         elif name == "pbi_rest_list_workspaces":
-            if not is_connected:
-                return [TextContent(type="text", text="Not connected to Power BI. Use the 'connect' tool first.")]
-
+            # REST API works independently - no XMLA connection needed
             top_value = arguments.get("top")
             top = None
             if top_value is not None:
@@ -1423,9 +1464,7 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[TextCon
             return [TextContent(type="text", text=output)]
 
         elif name == "pbi_rest_list_datasets":
-            if not is_connected:
-                return [TextContent(type="text", text="Not connected to Power BI. Use the 'connect' tool first.")]
-
+            # REST API works independently - no XMLA connection needed
             workspace_id = arguments.get("workspace_id")
             top_value = arguments.get("top")
             top = None
@@ -1465,9 +1504,7 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[TextCon
             return [TextContent(type="text", text=output)]
 
         elif name == "pbi_rest_execute_query":
-            if not is_connected:
-                return [TextContent(type="text", text="Not connected to Power BI. Use the 'connect' tool first.")]
-
+            # REST API works independently - no XMLA connection needed
             dataset_id = arguments["dataset_id"]
             workspace_id = arguments.get("workspace_id")
             query = arguments.get("query")

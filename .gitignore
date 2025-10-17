@@ -96,3 +96,6 @@ temp/
 # Build output
 out/
 query_results.json
+
+# Archived documentation
+archive/

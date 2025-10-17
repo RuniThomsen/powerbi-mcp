@@ -1,6 +1,11 @@
 # PowerBI MCP Server
 
-This project is a Model Context Protocol (MCP) server that provides AI assistants with access to Power BI datasets and metadata. It enables querying Power BI data models through ADOMD.NET and returns structured information about tables, relationships, and data.
+This project is a Model Context Protocol (MCP) server with **dual connectivity capabilities**:
+
+1. **Power BI REST APIs** - Direct access to Power BI service (powerbi.com) for querying workspaces, datasets, reports, and executing DAX queries
+2. **XMLA Endpoints** - Connection to on-premises SQL Server Analysis Services (SSAS) servers via XMLA/ADOMD.NET for data model access
+
+The server provides AI assistants with unified access to both cloud-based Power BI and internal SSAS data models, enabling comprehensive data analysis and metadata retrieval across both platforms.
 
 ## Repository Structure
 
