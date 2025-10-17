@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "powerbi-mcp": {
+      "command": "python",
+      "args": ["src/server_enhanced.py", "--host", "127.0.0.1", "--port", "8000"],
+      "cwd": ".",
+      "env": {
+        "PYTHONNET_RUNTIME": "coreclr",
+        "USE_AZURE_CLI": "true"
+      }
+    }
+  }
+}

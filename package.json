@@ -1,0 +1,42 @@
+{
+  "name": "powerbi-mcp",
+  "version": "1.0.0",
+  "description": "PowerBI MCP server for connecting AI assistants to Power BI datasets via XMLA endpoints",
+  "main": "src/server.py",
+  "scripts": {
+    "start": "python src/server.py",
+    "start-simple": "python src/server_simple.py",
+    "test": "pytest",
+    "setup": "python scripts/install_mcp.py"
+  },
+  "keywords": [
+    "powerbi",
+    "mcp",
+    "model-context-protocol",
+    "azure",
+    "xmla",
+    "dax"
+  ],
+  "author": "sulaiman013",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sulaiman013/powerbi-mcp.git"
+  },
+  "dependencies": {
+    "python": ">=3.11"
+  },
+  "engines": {
+    "python": ">=3.11"
+  },
+  "mcp": {
+    "server": {
+      "command": "python",
+      "args": ["src/server_simple.py"],
+      "env": {
+        "PYTHONNET_RUNTIME": "coreclr",
+        "USE_AZURE_CLI": "true"
+      }
+    }
+  }
+}

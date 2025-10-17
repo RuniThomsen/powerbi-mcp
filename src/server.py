@@ -74,23 +74,72 @@ load_dotenv()
 # Prepare ADOMD.NET search paths before importing pyadomd
 env_adomd = os.environ.get("ADOMD_LIB_DIR")
 
-# Try to use NuGet packages first (if available)
+# Try to use NuGet packages first (if available), preferring the modern multi-runtime packages
 user_nuget_path = os.path.expanduser(r"~\.nuget\packages")
-nuget_adomd_path = os.path.join(
-    user_nuget_path, "microsoft.analysisservices.adomdclient.netcore.retail.amd64", "19.84.1", "lib", "netcoreapp3.0"
-)
-nuget_config_path = os.path.join(user_nuget_path, "system.configuration.configurationmanager", "9.0.7", "lib", "net8.0")
-nuget_identity_path = os.path.join(user_nuget_path, "microsoft.identity.client", "4.74.0", "lib", "net8.0")
-nuget_identity_abs_path = os.path.join(
-    user_nuget_path, "microsoft.identitymodel.abstractions", "6.35.0", "lib", "net6.0"
-)
+
+
+def _latest_lib_path(
+    package_name: str,
+    subdirs=("lib",),
+    preferred_tfms=(
+        # Prefer modern TFMs first
+        "net8.0",
+        "net6.0",
+        # Fallbacks for older packages
+        "netstandard2.0",
+        "netcoreapp3.0",
+        "net472",
+    ),
+) -> Optional[str]:
+    try:
+        pkg_root = os.path.join(user_nuget_path, package_name)
+        if not os.path.exists(pkg_root):
+            return None
+        # Find the highest semantic version folder
+        versions = [v for v in os.listdir(pkg_root) if os.path.isdir(os.path.join(pkg_root, v))]
+
+        def _ver_key(v: str):
+            # Split version components, ignore non-numeric suffixes conservatively
+            parts = re.split(r"[^0-9]+", v)
+            nums = [int(p) for p in parts if p.isdigit()]
+            return tuple(nums)
+
+        versions.sort(key=_ver_key, reverse=True)
+        for v in versions:
+            candidate = os.path.join(pkg_root, v, *subdirs)
+            if os.path.exists(candidate):
+                # Pick first existing preferred TFM directory
+                for tfm in preferred_tfms:
+                    tfm_path = os.path.join(candidate, tfm)
+                    if os.path.exists(tfm_path):
+                        return tfm_path
+                # If no TFM match, accept candidate itself if it contains the DLL
+                return candidate
+        return None
+    except Exception:
+        return None
+
+
+# Modern package (recommended by MS Learn): Microsoft.AnalysisServices.AdomdClient
+
+modern_adomd_lib = _latest_lib_path("microsoft.analysisservices.adomdclient")
+
+# Back-compat older package name still used in some envs
+legacy_adomd_lib = _latest_lib_path("microsoft.analysisservices.adomdclient.netcore.retail.amd64")
+
+# Supporting dependencies when using NuGet
+nuget_config_lib = _latest_lib_path("system.configuration.configurationmanager")
+nuget_identity_lib = _latest_lib_path("microsoft.identity.client")
+nuget_identity_abs_lib = _latest_lib_path("microsoft.identitymodel.abstractions", preferred_tfms=("net8.0", "net6.0"))
 
 adomd_paths = [
     env_adomd,
-    nuget_adomd_path if os.path.exists(nuget_adomd_path) else None,
-    nuget_config_path if os.path.exists(nuget_config_path) else None,
-    nuget_identity_path if os.path.exists(nuget_identity_path) else None,
-    nuget_identity_abs_path if os.path.exists(nuget_identity_abs_path) else None,
+    modern_adomd_lib,
+    legacy_adomd_lib,
+    nuget_config_lib,
+    nuget_identity_lib,
+    nuget_identity_abs_lib,
+    # Traditional install locations (SSMS/Feature Pack)
     r"C:\\Program Files\\Microsoft.NET\\ADOMD.NET\\160",
     r"C:\\Program Files\\Microsoft.NET\\ADOMD.NET\\150",
     r"C:\\Program Files (x86)\\Microsoft.NET\\ADOMD.NET\\160",
@@ -104,6 +153,12 @@ logger.info(
 for p in adomd_paths:
     if p and os.path.exists(p):
         sys.path.append(p)
+        # On Windows, ensure native loader can find dependent DLLs
+        if os.name == "nt" and hasattr(os, "add_dll_directory"):
+            try:
+                os.add_dll_directory(p)
+            except Exception:
+                pass
 
 import platform
 import sys
@@ -132,7 +187,7 @@ except Exception as e:  # pragma: no cover - best effort
         logger.warning("Failed to set fallback runtime: %s", e2)
 
 # Attempt to import clr and pyadomd. These may be missing when ADOMD.NET is not
-# installed. We load the actual ADOMD.NET assembly later if possible.
+# installed. We'll try to load the ADOMD.NET assembly and then re-import pyadomd.
 try:
     import clr  # type: ignore
     from pyadomd import Pyadomd  # type: ignore
@@ -141,7 +196,7 @@ try:
 except Exception as e:  # pragma: no cover - runtime environment dependent
     clr = None
     Pyadomd = None
-    logger.warning("pyadomd not available: %s", e)
+    logger.warning("Initial pyadomd import failed (will retry after loading ADOMD.NET): %s", e)
 
 
 # Placeholder for AdomdSchemaGuid if the assembly fails to load
@@ -157,20 +212,30 @@ skip_adomd_load = os.environ.get("SKIP_ADOMD_LOAD", "0").lower() in ("1", "true"
 
 if clr and not skip_adomd_load:
     logger.info("Searching for ADOMD.NET in: %s", ", ".join([p for p in adomd_paths if p]))
-    for path in adomd_paths:
-        if not path:
-            continue
-        if os.path.exists(path):
-            dll = os.path.join(path, "Microsoft.AnalysisServices.AdomdClient.dll")
-            try:
-                sys.path.append(path)
-                clr.AddReference(dll)
-                adomd_loaded = True
-                logger.info("Loaded ADOMD.NET from %s", dll)
-                break
-            except Exception as e:  # pragma: no cover - best effort
-                logger.warning("Failed to load ADOMD.NET from %s: %s", dll, e)
+    # First, try by assembly name which works if in probing paths
+    try:
+        clr.AddReference("Microsoft.AnalysisServices.AdomdClient")
+        adomd_loaded = True
+        logger.info("Loaded ADOMD.NET by assembly name")
+    except Exception:
+        # Fallback: load from discovered DLL locations
+        for path in adomd_paths:
+            if not path:
                 continue
+            if os.path.exists(path):
+                dll = os.path.join(path, "Microsoft.AnalysisServices.AdomdClient.dll")
+                try:
+                    # Use Reflection to load from explicit path for pythonnet 3+
+                    from System.Reflection import Assembly  # type: ignore
+
+                    if os.path.exists(dll):
+                        Assembly.LoadFrom(dll)
+                        adomd_loaded = True
+                        logger.info("Loaded ADOMD.NET via Reflection from %s", dll)
+                        break
+                except Exception as e:  # pragma: no cover - best effort
+                    logger.warning("Failed to load ADOMD.NET from %s: %s", dll, e)
+                    continue
 
     if adomd_loaded:
         try:
@@ -180,6 +245,16 @@ if clr and not skip_adomd_load:
             logger.debug("ADOMD.NET types imported")
         except Exception as e:  # pragma: no cover - best effort
             logger.warning("Failed to import AdomdSchemaGuid: %s", e)
+
+        # If pyadomd wasn't available earlier, try importing it now that the assembly is loaded
+        if Pyadomd is None:
+            try:
+                from pyadomd import Pyadomd as _Pyadomd  # type: ignore
+
+                Pyadomd = _Pyadomd  # type: ignore
+                logger.info("pyadomd successfully imported after loading ADOMD.NET")
+            except Exception as e:  # pragma: no cover - best effort
+                logger.warning("pyadomd still unavailable after loading ADOMD.NET: %s", e)
 
 if not adomd_loaded:
     if skip_adomd_load:
