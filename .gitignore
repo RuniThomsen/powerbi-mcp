@@ -91,3 +91,11 @@ connection_strings.txt
 tmp/
 temp/
 *.tmp
+.temp-adomd/
+
+# Build output
+out/
+query_results.json
+
+# Archived documentation
+archive/

@@ -1,0 +1,25 @@
+{
+  "models": [
+    {
+      "title": "Claude 3.5 Sonnet with PowerBI",
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20241022",
+      "apiKey": "[API_KEY]"
+    }
+  ],
+  "mcpServers": {
+    "powerbi-mcp": {
+      "command": "python",
+      "args": [
+        "src/server_enhanced.py",
+        "--host", "127.0.0.1", 
+        "--port", "8000"
+      ],
+      "cwd": "d:/repos/powerbi-mcp",
+      "env": {
+        "PYTHONNET_RUNTIME": "coreclr",
+        "USE_AZURE_CLI": "true"
+      }
+    }
+  }
+}

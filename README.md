@@ -365,7 +365,7 @@ python -m pytest tests/test_integration.py -v
    - Increase timeout in Claude Desktop config
    - Check network connectivity to Power BI
 
-See [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for detailed solutions.
+See [TROUBLESHOOTING.md](docs/guides/troubleshooting.md) for detailed solutions.
 
 ## 📝 License
 

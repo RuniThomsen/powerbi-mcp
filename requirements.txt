@@ -4,6 +4,7 @@ mcp
 # Power BI Connection
 pyadomd
 pythonnet
+azure-identity
 
 # OpenAI Integration
 openai
