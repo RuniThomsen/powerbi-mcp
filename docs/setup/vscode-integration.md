@@ -193,7 +193,7 @@ python scripts/install_mcp.py
 
 ## Support
 
-- Check `docs/TROUBLESHOOTING.md` for common issues
+- Check `docs/guides/troubleshooting.md` for common issues
 - Use validation scripts for diagnostics
 - Review server logs in VS Code terminal
 - Test MCP connectivity with provided scripts

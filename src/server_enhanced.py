@@ -23,10 +23,10 @@ import os
 import re
 import sys
 import threading
-from functools import partial
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from decimal import Decimal
+from functools import partial
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
@@ -352,10 +352,10 @@ class AzureAuthenticator:
             self.auth_method = "Windows Authentication"
             logger.info("Using Windows Authentication (Integrated Security)")
             return "windows_auth"  # Special marker for Windows auth
-        
+
         scope = scope or POWER_BI_SCOPE
         resource = scope[:-9] if scope.endswith("/.default") else scope
-        
+
         # Check if tenant-level accounts are explicitly allowed
         allow_tenant_level = os.getenv("ALLOW_TENANT_LEVEL_ACCOUNT", "false").lower() == "true"
         if allow_tenant_level:
@@ -542,7 +542,7 @@ class PowerBIConnector:
         initial_catalog: str = None,
     ) -> bool:
         """Establish connection to Power BI dataset using available authentication methods
-        
+
         Supports:
         - Windows Authentication: tenant_id=None (for on-premises SSAS)
         - Azure AD Authentication: tenant_id required (for Power BI/Azure AS)
@@ -612,7 +612,7 @@ class PowerBIConnector:
                         self._token_claims.get("aud"),
                         self._token_claims.get("upn") or self._token_claims.get("preferred_username"),
                     )
-                
+
                 # Use simple password embedding (works with Azure CLI tokens where ClaimsToken fails)
                 # This approach was verified to work in test_cli_xmla_connection.py
                 logger.info("Using direct password embedding for Azure CLI token authentication")
@@ -626,11 +626,11 @@ class PowerBIConnector:
                     "Persist Security Info=True;"
                     "Connect Timeout=15;"
                 )
-                
+
                 # Test connection using Pyadomd (works reliably with Azure CLI tokens)
                 with Pyadomd(self.connection_string):
                     pass
-                
+
                 logger.info("✓ Connection test successful using password embedding method")
 
             self.connected = True
@@ -1224,7 +1224,11 @@ async def handle_list_tools() -> List[Tool]:
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "DAX query to execute"},
-                    "max_rows": {"type": "integer", "description": "Maximum number of rows to return (default: 1000)", "default": 1000},
+                    "max_rows": {
+                        "type": "integer",
+                        "description": "Maximum number of rows to return (default: 1000)",
+                        "default": 1000,
+                    },
                 },
                 "required": ["query"],
             },

@@ -1,8 +1,9 @@
 """Power BI REST API helper client used by MCP tools."""
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import requests
 
@@ -225,4 +226,3 @@ class PowerBIRestClient:
                     }
                 )
         return preview
-

@@ -9,10 +9,14 @@ The server provides AI assistants with unified access to both cloud-based Power 
 
 ## Repository Structure
 
-- `/src`: Main server implementation (`server.py`)
+- `/src`: Main server implementation (`server.py`, `server_enhanced.py`)
 - `/tests`: Test suite organized by layers (unit, local, integration)
-- `/scripts`: Setup and utility scripts including `install_dotnet_adomd.sh`
-- `/docs`: Documentation for setup, troubleshooting, and integration testing
+- `/scripts`: Utility scripts (setup, validation, diagnostics, configuration)
+- `/examples`: Example scripts demonstrating REST API and SSAS connectivity
+- `/docs`: Organized documentation
+  - `/setup`: Setup guides (Windows, Service Principal, VS Code, SSAS quick start)
+  - `/guides`: Usage guides (troubleshooting, REST API, XMLA/SSAS)
+  - `/development`: Development documentation (integration testing)
 
 ## Technology Stack
 
@@ -23,9 +27,13 @@ The server provides AI assistants with unified access to both cloud-based Power 
 
 ## Development Workflow
 
-1. **Development-First Approach**: Always create separate `dev_*.py` files to test new functionality with live Power BI data before modifying main server code
-2. **Test Integration**: Verify functionality works with real datasets before integrating into `server.py`
-3. **Full Test Validation**: Run complete test suite after any changes
+1. **Development-First Approach**: For testing new functionality, use example scripts in `/examples/` or create new test files in `/tests/` before modifying main server code
+2. **Example Scripts**: Refer to `/examples/` directory for:
+   - `rest_api_example.py` - Power BI REST API usage
+   - `ssas_interactive_example.py` - XMLA/SSAS connectivity
+   - `windows_auth_example.py` - Windows authentication testing
+3. **Test Integration**: Verify functionality works with real datasets before integrating into `server.py`
+4. **Full Test Validation**: Run complete test suite after any changes
 
 ## Code Quality Standards
 

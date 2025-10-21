@@ -83,7 +83,10 @@ def test_execute_query_builds_payload_and_preview(mock_connector, mock_session):
     assert result["query"] == 'EVALUATE ROW("MeasureValue", [Revenue])'
     assert result["preview"][0]["headers"] == ["MeasureValue"]
     assert result["preview"][0]["row_count"] == 2
-    assert mock_session.request.call_args.kwargs["json"]["queries"][0]["query"] == 'EVALUATE ROW("MeasureValue", [Revenue])'
+    assert (
+        mock_session.request.call_args.kwargs["json"]["queries"][0]["query"]
+        == 'EVALUATE ROW("MeasureValue", [Revenue])'
+    )
 
 
 def test_request_refreshes_token_on_401(mock_connector, mock_session):
